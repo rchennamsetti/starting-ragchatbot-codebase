@@ -17,6 +17,50 @@ class Tool(ABC):
         pass
 
 
+class CourseOutlineTool(Tool):
+    """Tool for returning a course outline from the metadata catalog"""
+
+    def __init__(self, vector_store: VectorStore):
+        self.store = vector_store
+
+    def get_tool_definition(self) -> Dict[str, Any]:
+        """Return Anthropic tool definition for the course outline tool"""
+        return {
+            "name": "get_course_outline",
+            "description": "Return a course title, course link, and the complete numbered lesson list for a course",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "course_name": {
+                        "type": "string",
+                        "description": "Course title or partial course title (for example, 'MCP' or 'Introduction')"
+                    }
+                },
+                "required": ["course_name"]
+            }
+        }
+
+    def execute(self, course_name: str) -> str:
+        """Return the full metadata outline for the requested course."""
+        outline = self.store.get_course_outline(course_name)
+        if not outline:
+            return f"No course found matching '{course_name}'"
+
+        lesson_lines = []
+        for lesson in outline.get("lessons", []):
+            lesson_number = lesson.get("lesson_number")
+            lesson_title = lesson.get("lesson_title", "")
+            lesson_lines.append(f"Lesson {lesson_number}: {lesson_title}")
+
+        lesson_section = "\n".join(lesson_lines) if lesson_lines else "No lessons available."
+
+        return (
+            f"Course title: {outline.get('title')}\n"
+            f"Course link: {outline.get('course_link')}\n"
+            f"Lessons:\n{lesson_section}"
+        )
+
+
 class CourseSearchTool(Tool):
     """Tool for searching course content with semantic course name matching"""
     
@@ -89,23 +133,36 @@ class CourseSearchTool(Tool):
         """Format search results with course and lesson context"""
         formatted = []
         sources = []  # Track sources for the UI
-        
+        seen_sources = set()
+
         for doc, meta in zip(results.documents, results.metadata):
             course_title = meta.get('course_title', 'unknown')
             lesson_num = meta.get('lesson_number')
-            
+
             # Build context header
             header = f"[{course_title}"
             if lesson_num is not None:
                 header += f" - Lesson {lesson_num}"
             header += "]"
-            
-            # Track source for the UI
-            source = course_title
+
+            # Resolve a clickable link: prefer the specific lesson link,
+            # fall back to the course link if there's no lesson number
             if lesson_num is not None:
-                source += f" - Lesson {lesson_num}"
-            sources.append(source)
-            
+                link = self.store.get_lesson_link(course_title, lesson_num)
+            else:
+                link = self.store.get_course_link(course_title)
+
+            # Track source for the UI, deduping repeat chunks from the same
+            # course/lesson so each citation appears only once
+            source_key = (course_title, lesson_num)
+            if source_key not in seen_sources:
+                seen_sources.add(source_key)
+                sources.append({
+                    "course_title": course_title,
+                    "lesson_number": lesson_num,
+                    "link": link,
+                })
+
             formatted.append(f"{header}\n{doc}")
         
         # Store sources for retrieval

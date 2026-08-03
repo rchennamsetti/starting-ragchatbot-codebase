@@ -4,7 +4,9 @@ def test_query_creates_session_when_missing(client, fake_rag_system):
     assert response.status_code == 200
     body = response.json()
     assert body["answer"] == "This is a test answer."
-    assert body["sources"] == ["Course A - Lesson 1"]
+    assert body["sources"] == [
+        {"course_title": "Course A", "lesson_number": 1, "link": None}
+    ]
     assert body["session_id"] == "session_1"
     assert fake_rag_system.last_query_call == ("What is lesson 1 about?", "session_1")
 
@@ -45,3 +47,22 @@ def test_get_course_stats(client):
         "total_courses": 2,
         "course_titles": ["Course A", "Course B"],
     }
+
+
+def test_new_chat_clears_previous_session_and_returns_fresh_id(client, fake_rag_system):
+    old_session = fake_rag_system.session_manager.create_session()
+    fake_rag_system.session_manager.add_message(old_session, "user", "hello")
+
+    response = client.post("/api/new-chat", json={"session_id": old_session})
+
+    assert response.status_code == 200
+    new_session = response.json()["session_id"]
+    assert new_session != old_session
+    assert fake_rag_system.session_manager.get_conversation_history(old_session) is None
+
+
+def test_new_chat_without_prior_session(client):
+    response = client.post("/api/new-chat", json={})
+
+    assert response.status_code == 200
+    assert response.json()["session_id"]

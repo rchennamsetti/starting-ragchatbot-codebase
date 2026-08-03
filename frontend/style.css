@@ -241,8 +241,35 @@ header h1 {
 }
 
 .sources-content {
-    padding: 0 0.5rem 0.25rem 1.5rem;
+    padding: 0 0.5rem 0.25rem 1.75rem;
+    margin: 0;
     color: var(--text-secondary);
+    list-style: decimal;
+}
+
+.sources-content > li {
+    margin-bottom: 0.35rem;
+}
+
+.sources-content > li:last-child {
+    margin-bottom: 0;
+}
+
+.source-lessons {
+    list-style: decimal;
+    padding-left: 1.25rem;
+    margin-top: 0.25rem;
+}
+
+.source-link,
+.source-link--plain {
+    color: inherit;
+    text-decoration: none;
+}
+
+a.source-link:hover {
+    text-decoration: underline;
+    color: var(--text-primary);
 }
 
 /* Markdown formatting styles */
@@ -489,6 +516,29 @@ header h1 {
 details[open] .stats-header::before,
 details[open] .suggested-header::before {
     transform: rotate(90deg);
+}
+
+/* New Chat Button */
+.new-chat-button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem 0;
+    border: none;
+    background: none;
+    outline: none;
+    transition: color 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.new-chat-button:hover,
+.new-chat-button:focus {
+    color: var(--primary-color);
 }
 
 /* Course Stats in Sidebar */

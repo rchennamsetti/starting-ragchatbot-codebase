@@ -5,7 +5,7 @@ const API_URL = '/api';
 let currentSessionId = null;
 
 // DOM elements
-let chatMessages, chatInput, sendButton, totalCourses, courseTitles;
+let chatMessages, chatInput, sendButton, totalCourses, courseTitles, newChatButton;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     sendButton = document.getElementById('sendButton');
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
-    
+    newChatButton = document.getElementById('newChatButton');
+
     setupEventListeners();
     createNewSession();
     loadCourseStats();
@@ -28,8 +29,10 @@ function setupEventListeners() {
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-    
-    
+
+    // New chat
+    newChatButton.addEventListener('click', startNewChat);
+
     // Suggested questions
     document.querySelectorAll('.suggested-item').forEach(button => {
         button.addEventListener('click', (e) => {
@@ -122,10 +125,12 @@ function addMessage(content, type, sources = null, isWelcome = false) {
     let html = `<div class="message-content">${displayContent}</div>`;
     
     if (sources && sources.length > 0) {
+        const sourceHtml = renderGroupedSources(sources);
+
         html += `
             <details class="sources-collapsible">
                 <summary class="sources-header">Sources</summary>
-                <div class="sources-content">${sources.join(', ')}</div>
+                <ol class="sources-content">${sourceHtml}</ol>
             </details>
         `;
     }
@@ -135,6 +140,70 @@ function addMessage(content, type, sources = null, isWelcome = false) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
     return messageId;
+}
+
+// Group flat sources by course, sorted alphabetically by course title and
+// then numerically by lesson number, so each course lists its lessons as
+// sub-items underneath it.
+function groupSourcesByCourse(sources) {
+    const courseMap = new Map();
+
+    for (const source of sources) {
+        if (!courseMap.has(source.course_title)) {
+            courseMap.set(source.course_title, { courseLink: null, lessons: new Map() });
+        }
+        const entry = courseMap.get(source.course_title);
+
+        if (source.lesson_number === null || source.lesson_number === undefined) {
+            entry.courseLink = source.link;
+        } else if (!entry.lessons.has(source.lesson_number)) {
+            entry.lessons.set(source.lesson_number, source.link);
+        }
+    }
+
+    const sortedCourseTitles = Array.from(courseMap.keys()).sort((a, b) => a.localeCompare(b));
+
+    return sortedCourseTitles.map(courseTitle => {
+        const { courseLink, lessons } = courseMap.get(courseTitle);
+        const sortedLessonNumbers = Array.from(lessons.keys()).sort((a, b) => a - b);
+        return {
+            courseTitle,
+            courseLink,
+            lessons: sortedLessonNumbers.map(number => ({ number, link: lessons.get(number) }))
+        };
+    });
+}
+
+// Render a source label as a clickable (invisible-link-style) anchor when a
+// URL is available, otherwise as plain text.
+function renderSourceLabel(text, link) {
+    const escapedText = escapeHtml(text);
+    if (link) {
+        return `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" class="source-link">${escapedText}</a>`;
+    }
+    return `<span class="source-link source-link--plain">${escapedText}</span>`;
+}
+
+function renderGroupedSources(sources) {
+    const groupedCourses = groupSourcesByCourse(sources);
+
+    return groupedCourses.map(course => {
+        // A course with no lesson-level matches is clickable itself (via its
+        // course link); otherwise it's just a plain group header.
+        const courseLabel = course.lessons.length === 0
+            ? renderSourceLabel(course.courseTitle, course.courseLink)
+            : renderSourceLabel(course.courseTitle, null);
+
+        let lessonListHtml = '';
+        if (course.lessons.length > 0) {
+            const lessonItems = course.lessons
+                .map(lesson => `<li>${renderSourceLabel(`Lesson ${lesson.number}`, lesson.link)}</li>`)
+                .join('');
+            lessonListHtml = `<ol class="source-lessons">${lessonItems}</ol>`;
+        }
+
+        return `<li>${courseLabel}${lessonListHtml}</li>`;
+    }).join('');
 }
 
 // Helper function to escape HTML for user messages
@@ -150,6 +219,38 @@ async function createNewSession() {
     currentSessionId = null;
     chatMessages.innerHTML = '';
     addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
+}
+
+// Start a new chat: clear the current conversation and get a fresh session,
+// tearing down the old session's history on the backend along the way.
+async function startNewChat() {
+    chatInput.disabled = true;
+    sendButton.disabled = true;
+
+    try {
+        const response = await fetch(`${API_URL}/new-chat`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ session_id: currentSessionId })
+        });
+
+        if (!response.ok) throw new Error('Failed to start new chat');
+
+        const data = await response.json();
+        currentSessionId = data.session_id;
+    } catch (error) {
+        console.error('Error starting new chat:', error);
+        // Fall back to a local reset - the next query will lazily create a session
+        currentSessionId = null;
+    } finally {
+        chatMessages.innerHTML = '';
+        addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
+        chatInput.disabled = false;
+        sendButton.disabled = false;
+        chatInput.focus();
+    }
 }
 
 // Load course statistics

@@ -1,12 +1,14 @@
 from unittest.mock import Mock
 
-from search_tools import CourseSearchTool, ToolManager
+from search_tools import CourseOutlineTool, CourseSearchTool, ToolManager
 from vector_store import SearchResults
 
 
 def make_store(results: SearchResults) -> Mock:
     store = Mock()
     store.search.return_value = results
+    store.get_lesson_link.return_value = None
+    store.get_course_link.return_value = None
     return store
 
 
@@ -19,13 +21,38 @@ def test_execute_formats_results_with_lesson_headers():
         ],
         distances=[0.1, 0.2],
     )
-    tool = CourseSearchTool(make_store(results))
+    store = make_store(results)
+    store.get_lesson_link.return_value = "https://example.com/lesson"
+    tool = CourseSearchTool(store)
 
     output = tool.execute(query="vector search")
 
     assert "[Course A - Lesson 2]\nVector search content..." in output
     assert "[Course A - Lesson 3]\nMore content..." in output
-    assert tool.last_sources == ["Course A - Lesson 2", "Course A - Lesson 3"]
+    assert tool.last_sources == [
+        {"course_title": "Course A", "lesson_number": 2, "link": "https://example.com/lesson"},
+        {"course_title": "Course A", "lesson_number": 3, "link": "https://example.com/lesson"},
+    ]
+
+
+def test_execute_dedupes_repeated_course_lesson_chunks():
+    results = SearchResults(
+        documents=["First chunk...", "Second chunk..."],
+        metadata=[
+            {"course_title": "Course A", "lesson_number": 8},
+            {"course_title": "Course A", "lesson_number": 8},
+        ],
+        distances=[0.1, 0.2],
+    )
+    store = make_store(results)
+    store.get_lesson_link.return_value = "https://example.com/lesson-8"
+    tool = CourseSearchTool(store)
+
+    tool.execute(query="anything")
+
+    assert tool.last_sources == [
+        {"course_title": "Course A", "lesson_number": 8, "link": "https://example.com/lesson-8"},
+    ]
 
 
 def test_execute_passes_filters_through_to_store():
@@ -46,6 +73,26 @@ def test_execute_reports_store_error():
     assert tool.execute(query="anything", course_name="XYZ") == (
         "No course found matching 'XYZ'"
     )
+
+
+def test_course_outline_tool_returns_course_title_link_and_lessons():
+    store = Mock()
+    store.get_course_outline.return_value = {
+        "title": "Course A",
+        "course_link": "https://example.com/course-a",
+        "lessons": [
+            {"lesson_number": 1, "lesson_title": "Intro"},
+            {"lesson_number": 2, "lesson_title": "Vectors"},
+        ],
+    }
+    tool = CourseOutlineTool(store)
+
+    output = tool.execute(course_name="Course A")
+
+    assert "Course title: Course A" in output
+    assert "Course link: https://example.com/course-a" in output
+    assert "Lesson 1: Intro" in output
+    assert "Lesson 2: Vectors" in output
 
 
 def test_execute_empty_results_mentions_filters():
@@ -76,7 +123,9 @@ def test_tool_manager_sources_lifecycle():
     manager.register_tool(tool)
 
     manager.execute_tool("search_course_content", query="anything")
-    assert manager.get_last_sources() == ["Course A - Lesson 1"]
+    assert manager.get_last_sources() == [
+        {"course_title": "Course A", "lesson_number": 1, "link": None}
+    ]
 
     manager.reset_sources()
     assert manager.get_last_sources() == []

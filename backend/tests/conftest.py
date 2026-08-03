@@ -21,7 +21,10 @@ def fake_rag_system():
         def __init__(self):
             self.session_manager = SessionManager(max_history=2)
             self.last_query_call = None
-            self.query_response = ("This is a test answer.", ["Course A - Lesson 1"])
+            self.query_response = (
+                "This is a test answer.",
+                [{"course_title": "Course A", "lesson_number": 1, "link": None}],
+            )
             self.analytics = {
                 "total_courses": 2,
                 "course_titles": ["Course A", "Course B"],

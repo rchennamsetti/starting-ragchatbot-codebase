@@ -130,7 +130,7 @@ function addMessage(content, type, sources = null, isWelcome = false) {
         html += `
             <details class="sources-collapsible">
                 <summary class="sources-header">Sources</summary>
-                <ol class="sources-content">${sourceHtml}</ol>
+                <ul class="sources-content">${sourceHtml}</ul>
             </details>
         `;
     }
@@ -157,7 +157,7 @@ function groupSourcesByCourse(sources) {
         if (source.lesson_number === null || source.lesson_number === undefined) {
             entry.courseLink = source.link;
         } else if (!entry.lessons.has(source.lesson_number)) {
-            entry.lessons.set(source.lesson_number, source.link);
+            entry.lessons.set(source.lesson_number, { link: source.link, title: source.lesson_title });
         }
     }
 
@@ -169,7 +169,7 @@ function groupSourcesByCourse(sources) {
         return {
             courseTitle,
             courseLink,
-            lessons: sortedLessonNumbers.map(number => ({ number, link: lessons.get(number) }))
+            lessons: sortedLessonNumbers.map(number => ({ number, ...lessons.get(number) }))
         };
     });
 }
@@ -197,9 +197,14 @@ function renderGroupedSources(sources) {
         let lessonListHtml = '';
         if (course.lessons.length > 0) {
             const lessonItems = course.lessons
-                .map(lesson => `<li>${renderSourceLabel(`Lesson ${lesson.number}`, lesson.link)}</li>`)
+                .map(lesson => {
+                    const label = lesson.title
+                        ? `Lesson ${lesson.number}: ${lesson.title}`
+                        : `Lesson ${lesson.number}`;
+                    return `<li>${renderSourceLabel(label, lesson.link)}</li>`;
+                })
                 .join('');
-            lessonListHtml = `<ol class="source-lessons">${lessonItems}</ol>`;
+            lessonListHtml = `<ul class="source-lessons">${lessonItems}</ul>`;
         }
 
         return `<li>${courseLabel}${lessonListHtml}</li>`;

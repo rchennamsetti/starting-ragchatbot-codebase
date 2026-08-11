@@ -1,7 +1,10 @@
 import os
 import re
+import logging
 from typing import List, Tuple
 from models import Course, Lesson, CourseChunk
+
+logger = logging.getLogger(__name__)
 
 class DocumentProcessor:
     """Processes course documents and extracts structured information"""
@@ -102,9 +105,11 @@ class DocumentProcessor:
         Line 3: Course Instructor: [instructor]
         Following lines: Lesson markers and content
         """
+        logger.debug("Processing course document: %s", file_path)
+
         content = self.read_file(file_path)
         filename = os.path.basename(file_path)
-        
+
         lines = content.strip().split('\n')
         
         # Extract course metadata from first three lines
@@ -255,5 +260,10 @@ class DocumentProcessor:
                     )
                     course_chunks.append(course_chunk)
                     chunk_counter += 1
-        
+
+        logger.debug(
+            "Processed %s: course=%r, %d lesson(s), %d chunk(s)",
+            filename, course.title, len(course.lessons), len(course_chunks)
+        )
+
         return course, course_chunks

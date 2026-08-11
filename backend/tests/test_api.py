@@ -5,7 +5,7 @@ def test_query_creates_session_when_missing(client, fake_rag_system):
     body = response.json()
     assert body["answer"] == "This is a test answer."
     assert body["sources"] == [
-        {"course_title": "Course A", "lesson_number": 1, "link": None}
+        {"course_title": "Course A", "lesson_number": 1, "lesson_title": None, "link": None}
     ]
     assert body["session_id"] == "session_1"
     assert fake_rag_system.last_query_call == ("What is lesson 1 about?", "session_1")

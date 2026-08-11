@@ -244,7 +244,7 @@ header h1 {
     padding: 0 0.5rem 0.25rem 1.75rem;
     margin: 0;
     color: var(--text-secondary);
-    list-style: decimal;
+    list-style: disc;
 }
 
 .sources-content > li {
@@ -256,7 +256,7 @@ header h1 {
 }
 
 .source-lessons {
-    list-style: decimal;
+    list-style: circle;
     padding-left: 1.25rem;
     margin-top: 0.25rem;
 }
@@ -475,28 +475,31 @@ a.source-link:hover {
 /* Sidebar Headers */
 .stats-header,
 .suggested-header {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
     cursor: pointer;
-    padding: 0.5rem 0;
+    padding: 0.625rem 0.75rem;
     border: none;
+    border-radius: 8px;
     background: none;
     list-style: none;
     outline: none;
-    transition: color 0.2s ease;
+    transition: all 0.2s ease;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
 }
 
 .stats-header:focus,
 .suggested-header:focus {
     color: var(--primary-color);
+    background: var(--surface-hover);
 }
 
 .stats-header:hover,
 .suggested-header:hover {
     color: var(--primary-color);
+    background: var(--surface-hover);
 }
 
 .stats-header::-webkit-details-marker,
@@ -520,25 +523,31 @@ details[open] .suggested-header::before {
 
 /* New Chat Button */
 .new-chat-button {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    text-align: left;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: white;
     cursor: pointer;
-    padding: 0.5rem 0;
+    padding: 0.75rem 1rem;
     border: none;
-    background: none;
+    border-radius: 8px;
+    background: var(--primary-color);
     outline: none;
-    transition: color 0.2s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
 }
 
-.new-chat-button:hover,
+.new-chat-button:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
 .new-chat-button:focus {
-    color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 /* Course Stats in Sidebar */

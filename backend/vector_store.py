@@ -1,9 +1,12 @@
 import chromadb
 from chromadb.config import Settings
+import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from models import Course, CourseChunk
 from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class SearchResults:
@@ -84,21 +87,29 @@ class VectorStore:
         
         # Step 2: Build filter for content search
         filter_dict = self._build_filter(course_title, lesson_number)
-        
+
         # Step 3: Search course content
         # Use provided limit or fall back to configured max_results
         search_limit = limit if limit is not None else self.max_results
-        
+
+        logger.debug(
+            "Searching course_content: query=%r course_title=%r lesson_number=%r limit=%d",
+            query, course_title, lesson_number, search_limit
+        )
+
         try:
             results = self.course_content.query(
                 query_texts=[query],
                 n_results=search_limit,
                 where=filter_dict
             )
-            return SearchResults.from_chroma(results)
+            search_results = SearchResults.from_chroma(results)
+            logger.debug("Search returned %d result(s)", len(search_results.documents))
+            return search_results
         except Exception as e:
+            logger.error("Search error: %s", e, exc_info=True)
             return SearchResults.empty(f"Search error: {str(e)}")
-    
+
     def _resolve_course_name(self, course_name: str) -> Optional[str]:
         """Use vector search to find best matching course by name"""
         try:
@@ -106,13 +117,15 @@ class VectorStore:
                 query_texts=[course_name],
                 n_results=1
             )
-            
+
             if results['documents'][0] and results['metadatas'][0]:
                 # Return the title (which is now the ID)
-                return results['metadatas'][0][0]['title']
+                resolved_title = results['metadatas'][0][0]['title']
+                logger.debug("Resolved course name %r to %r", course_name, resolved_title)
+                return resolved_title
         except Exception as e:
-            print(f"Error resolving course name: {e}")
-        
+            logger.error("Error resolving course name %r: %s", course_name, e, exc_info=True)
+
         return None
     
     def _build_filter(self, course_title: Optional[str], lesson_number: Optional[int]) -> Optional[Dict]:
@@ -188,7 +201,7 @@ class VectorStore:
             self.course_catalog = self._create_collection("course_catalog")
             self.course_content = self._create_collection("course_content")
         except Exception as e:
-            print(f"Error clearing data: {e}")
+            logger.error("Error clearing data: %s", e, exc_info=True)
     
     def get_existing_course_titles(self) -> List[str]:
         """Get all existing course titles from the vector store"""
@@ -199,7 +212,7 @@ class VectorStore:
                 return results['ids']
             return []
         except Exception as e:
-            print(f"Error getting existing course titles: {e}")
+            logger.error("Error getting existing course titles: %s", e, exc_info=True)
             return []
     
     def get_course_count(self) -> int:
@@ -210,7 +223,7 @@ class VectorStore:
                 return len(results['ids'])
             return 0
         except Exception as e:
-            print(f"Error getting course count: {e}")
+            logger.error("Error getting course count: %s", e, exc_info=True)
             return 0
     
     def get_all_courses_metadata(self) -> List[Dict[str, Any]]:
@@ -230,7 +243,7 @@ class VectorStore:
                 return parsed_metadata
             return []
         except Exception as e:
-            print(f"Error getting courses metadata: {e}")
+            logger.error("Error getting courses metadata: %s", e, exc_info=True)
             return []
 
     def get_course_outline(self, course_name: str) -> Optional[Dict[str, Any]]:
@@ -253,7 +266,7 @@ class VectorStore:
                 }
             return None
         except Exception as e:
-            print(f"Error getting course outline: {e}")
+            logger.error("Error getting course outline: %s", e, exc_info=True)
             return None
 
     def get_course_link(self, course_title: str) -> Optional[str]:
@@ -266,7 +279,7 @@ class VectorStore:
                 return metadata.get('course_link')
             return None
         except Exception as e:
-            print(f"Error getting course link: {e}")
+            logger.error("Error getting course link: %s", e, exc_info=True)
             return None
     
     def get_lesson_link(self, course_title: str, lesson_number: int) -> Optional[str]:
@@ -286,5 +299,25 @@ class VectorStore:
                             return lesson.get('lesson_link')
             return None
         except Exception as e:
-            print(f"Error getting lesson link: {e}")
-    
+            logger.error("Error getting lesson link: %s", e, exc_info=True)
+            return None
+
+    def get_lesson_title(self, course_title: str, lesson_number: int) -> Optional[str]:
+        """Get lesson title for a given course title and lesson number"""
+        import json
+        try:
+            # Get course by ID (title is the ID)
+            results = self.course_catalog.get(ids=[course_title])
+            if results and 'metadatas' in results and results['metadatas']:
+                metadata = results['metadatas'][0]
+                lessons_json = metadata.get('lessons_json')
+                if lessons_json:
+                    lessons = json.loads(lessons_json)
+                    # Find the lesson with matching number
+                    for lesson in lessons:
+                        if lesson.get('lesson_number') == lesson_number:
+                            return lesson.get('lesson_title')
+            return None
+        except Exception as e:
+            logger.error("Error getting lesson title: %s", e, exc_info=True)
+            return None

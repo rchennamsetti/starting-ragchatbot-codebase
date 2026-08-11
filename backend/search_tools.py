@@ -1,6 +1,9 @@
-from typing import Dict, Any, Optional, Protocol
+import logging
+from typing import Dict, Any, List, Optional, Protocol
 from abc import ABC, abstractmethod
 from vector_store import VectorStore, SearchResults
+
+logger = logging.getLogger(__name__)
 
 
 class Tool(ABC):
@@ -42,8 +45,10 @@ class CourseOutlineTool(Tool):
 
     def execute(self, course_name: str) -> str:
         """Return the full metadata outline for the requested course."""
+        logger.debug("CourseOutlineTool executing for course_name=%r", course_name)
         outline = self.store.get_course_outline(course_name)
         if not outline:
+            logger.warning("No course found matching %r", course_name)
             return f"No course found matching '{course_name}'"
 
         lesson_lines = []
@@ -106,17 +111,23 @@ class CourseSearchTool(Tool):
             Formatted search results or error message
         """
         
+        logger.debug(
+            "CourseSearchTool executing: query=%r course_name=%r lesson_number=%r",
+            query, course_name, lesson_number
+        )
+
         # Use the vector store's unified search interface
         results = self.store.search(
             query=query,
             course_name=course_name,
             lesson_number=lesson_number
         )
-        
+
         # Handle errors
         if results.error:
+            logger.warning("CourseSearchTool search error: %s", results.error)
             return results.error
-        
+
         # Handle empty results
         if results.is_empty():
             filter_info = ""
@@ -124,6 +135,7 @@ class CourseSearchTool(Tool):
                 filter_info += f" in course '{course_name}'"
             if lesson_number:
                 filter_info += f" in lesson {lesson_number}"
+            logger.info("No relevant content found%s", filter_info)
             return f"No relevant content found{filter_info}."
         
         # Format and return results
@@ -145,10 +157,12 @@ class CourseSearchTool(Tool):
                 header += f" - Lesson {lesson_num}"
             header += "]"
 
-            # Resolve a clickable link: prefer the specific lesson link,
-            # fall back to the course link if there's no lesson number
+            # Resolve a clickable link and lesson title: prefer the specific
+            # lesson's, falling back to the course link if there's no lesson number
+            lesson_title = None
             if lesson_num is not None:
                 link = self.store.get_lesson_link(course_title, lesson_num)
+                lesson_title = self.store.get_lesson_title(course_title, lesson_num)
             else:
                 link = self.store.get_course_link(course_title)
 
@@ -160,6 +174,7 @@ class CourseSearchTool(Tool):
                 sources.append({
                     "course_title": course_title,
                     "lesson_number": lesson_num,
+                    "lesson_title": lesson_title,
                     "link": link,
                 })
 
@@ -172,10 +187,16 @@ class CourseSearchTool(Tool):
 
 class ToolManager:
     """Manages available tools for the AI"""
-    
+
     def __init__(self):
         self.tools = {}
-    
+        # Sources accumulated across every tool call made for the current
+        # query (a query may involve several tool calls across several
+        # sequential rounds), keyed by (course_title, lesson_number) to drop
+        # duplicates while preserving first-seen order.
+        self._sources: List[Dict[str, Any]] = []
+        self._seen_source_keys = set()
+
     def register_tool(self, tool: Tool):
         """Register any tool that implements the Tool interface"""
         tool_def = tool.get_tool_definition()
@@ -184,28 +205,44 @@ class ToolManager:
             raise ValueError("Tool must have a 'name' in its definition")
         self.tools[tool_name] = tool
 
-    
+
     def get_tool_definitions(self) -> list:
         """Get all tool definitions for Anthropic tool calling"""
         return [tool.get_tool_definition() for tool in self.tools.values()]
-    
+
     def execute_tool(self, tool_name: str, **kwargs) -> str:
         """Execute a tool by name with given parameters"""
         if tool_name not in self.tools:
+            logger.warning("Requested tool '%s' not found", tool_name)
             return f"Tool '{tool_name}' not found"
-        
-        return self.tools[tool_name].execute(**kwargs)
-    
+
+        tool = self.tools[tool_name]
+        result = tool.execute(**kwargs)
+
+        # Capture this call's sources immediately so they aren't overwritten
+        # by a later tool call in the same query (e.g. a second search round).
+        if hasattr(tool, 'last_sources') and tool.last_sources:
+            self._accumulate_sources(tool.last_sources)
+            tool.last_sources = []
+
+        return result
+
+    def _accumulate_sources(self, sources: List[Dict[str, Any]]) -> None:
+        """Append newly-seen sources, deduping by (course_title, lesson_number)."""
+        for source in sources:
+            key = (source.get("course_title"), source.get("lesson_number"))
+            if key not in self._seen_source_keys:
+                self._seen_source_keys.add(key)
+                self._sources.append(source)
+
     def get_last_sources(self) -> list:
-        """Get sources from the last search operation"""
-        # Check all tools for last_sources attribute
-        for tool in self.tools.values():
-            if hasattr(tool, 'last_sources') and tool.last_sources:
-                return tool.last_sources
-        return []
+        """Get all sources accumulated across this query's tool calls"""
+        return self._sources
 
     def reset_sources(self):
-        """Reset sources from all tools that track sources"""
+        """Reset accumulated sources ahead of the next query"""
+        self._sources = []
+        self._seen_source_keys = set()
         for tool in self.tools.values():
             if hasattr(tool, 'last_sources'):
                 tool.last_sources = []

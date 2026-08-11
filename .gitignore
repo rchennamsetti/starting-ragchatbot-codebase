@@ -17,6 +17,9 @@ ENV/
 # ChromaDB
 backend/chroma_db/
 
+# Logs
+backend/logs/
+
 # Uploads
 uploads/
 

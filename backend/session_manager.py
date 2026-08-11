@@ -1,5 +1,8 @@
+import logging
 from typing import Dict, List, Optional
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Message:
@@ -20,6 +23,7 @@ class SessionManager:
         self.session_counter += 1
         session_id = f"session_{self.session_counter}"
         self.sessions[session_id] = []
+        logger.debug("Created session %s", session_id)
         return session_id
     
     def add_message(self, session_id: str, role: str, content: str):
@@ -59,3 +63,4 @@ class SessionManager:
         """Clear all messages from a session"""
         if session_id in self.sessions:
             self.sessions[session_id] = []
+            logger.debug("Cleared session %s", session_id)

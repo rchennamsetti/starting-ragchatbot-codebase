@@ -29,6 +29,9 @@ uploads/
 *.swp
 *.swo
 
+# Claude Code local settings (personal/machine-specific, not shared)
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
